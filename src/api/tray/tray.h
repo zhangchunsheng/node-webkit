@@ -29,18 +29,20 @@
 #if defined(OS_MACOSX)
 #if __OBJC__
 @class NSStatusItem;
+@class MacTrayObserver;
 #else
 class NSStatusItem;
+class MacTrayObserver;
 #endif  // __OBJC__
-#elif defined(TOOLKIT_GTK)
+#elif 0
 #include <gtk/gtk.h>
-#include "ui/base/gtk/gtk_signal.h"
-#elif defined(OS_WIN)
+#include "chrome/browser/ui/libgtk2ui/gtk2_signal.h"
+#elif defined(OS_WIN) || defined(OS_LINUX)
 class StatusIcon;
 class StatusTray;
 #endif  // defined(OS_MACOSX)
 
-namespace api {
+namespace nwapi {
 
 class Menu;
 class TrayObserver;
@@ -48,7 +50,7 @@ class TrayObserver;
 class Tray : public Base {
  public:
   Tray(int id,
-       DispatcherHost* dispatcher_host,
+       const base::WeakPtr<DispatcherHost>& dispatcher_host,
        const base::DictionaryValue& option);
   virtual ~Tray();
 
@@ -62,15 +64,19 @@ class Tray : public Base {
   void Destroy();
   void SetTitle(const std::string& title);
   void SetIcon(const std::string& icon_path);
-  void SetTooltip(const std::string& title);
+  void SetTooltip(const std::string& tooltip);
   void SetMenu(Menu* menu);
   void Remove();
   // Alternate icons only work with Macs
   void SetAltIcon(const std::string& alticon_path);
+  // Template icons only work with Macs 
+  void SetIconsAreTemplates(bool areTemplates);
 
 #if defined(OS_MACOSX)
   __block NSStatusItem* status_item_;
-#elif defined(TOOLKIT_GTK)
+  MacTrayObserver* status_observer_;
+  bool iconsAreTemplates; 
+#elif 0
   GtkStatusIcon* status_item_;
 
   // Reference to the associated menu.
@@ -80,7 +86,7 @@ class Tray : public Base {
   CHROMEGTK_CALLBACK_0(Tray, void, OnClick);
   // Callback invoked when user right-clicks on the status icon.
   CHROMEGTK_CALLBACK_2(Tray, void, OnPopupMenu, guint, guint);
-#elif defined(OS_WIN)
+#elif defined(OS_WIN) || defined(OS_LINUX)
   // The global presentation of system tray.
   static StatusTray* status_tray_;
 
@@ -94,6 +100,6 @@ class Tray : public Base {
   DISALLOW_COPY_AND_ASSIGN(Tray);
 };
 
-}  // namespace api
+}  // namespace nwapi
 
 #endif  // CONTENT_NW_SRC_API_TRAY_TRAY_H_

@@ -18,6 +18,9 @@
 // ETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 //  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
+// OS X and Linux only, Windows does not have a concept of workspaces
+var canSetVisibleOnAllWorkspaces = /(darwin|linux)/.test(require('os').platform());
+
 exports.Window = {
   get: function(other) {
     // Return other window.
@@ -32,21 +35,23 @@ exports.Window = {
       id = nw.getShellIdForCurrentContext();
 
     // Return API's window object from id.
+    var ret;
     if (id > 0) {
       window.__nwWindowId = id;
-      return global.__nwWindowsStore[window.__nwWindowId];
+      ret = global.__nwWindowsStore[window.__nwWindowId];
+      if (!ret) {
+        ret = new global.Window(nw.getRoutingIDForCurrentContext(), true, id);
+      }
+      return ret;
     }
 
-    // Otherwise create it.
-    var win = new global.Window(nw.getRoutingIDForCurrentContext());
-    window.__nwWindowId = win.id;
-    return win;
+    return new global.Window(nw.getRoutingIDForCurrentContext());
   },
   open: function(url, options) {
     // Conver relative url to full url.
     var protocol = url.match(/^[a-z]+:\/\//i);
     if (protocol == null || protocol.length == 0) {
-      var href = window.location.href;
+      var href = window.location.href.split(/\?|#/)[0];
       url = href.substring(0, href.lastIndexOf('/') + 1) + url;
     }
 
@@ -58,8 +63,14 @@ exports.Window = {
         options.focus = false;
     }
     // Create new shell and get it's routing id.
+    var id = nw.allocateId();
+    options.object_id = id;
+    options.nw_win_id = id;
     var routing_id = nw.createShell(url, options);
 
-    return new global.Window(routing_id, options['new-instance']);
+    return new global.Window(routing_id, true, id);
+  },
+  canSetVisibleOnAllWorkspaces: function() {
+    return canSetVisibleOnAllWorkspaces;
   }
 };

@@ -36,14 +36,27 @@ function Tray(option) {
     option.shadowIcon = String(option.icon);
     option.icon = nw.getAbsolutePath(option.icon);
   }
-  
+
   if (option.hasOwnProperty('alticon')) {
     option.shadowAlticon = String(option.alticon);
     option.alticon = nw.getAbsolutePath(option.alticon);
   }
 
+  if (option.hasOwnProperty('iconsAreTemplates'))
+    option.iconsAreTemplates = Boolean(option.iconsAreTemplates);
+  else
+    option.iconsAreTemplates = true;
+
   if (option.hasOwnProperty('tooltip'))
     option.tooltip = String(option.tooltip);
+
+  if (option.hasOwnProperty('click')) {
+    if (typeof option.click != 'function') {
+      throw new String("'click' must be a valid Function");
+    } else {
+      this.click = option.click;
+    }
+   }
 
   if (option.hasOwnProperty('menu')) {
     if (v8_util.getConstructorName(option.menu) != 'Menu')
@@ -92,7 +105,15 @@ Tray.prototype.__defineSetter__('icon', function(val) {
 Tray.prototype.__defineSetter__('alticon', function(val) {
   v8_util.getHiddenValue(this, 'option').shadowAlticon = String(val);
   var real_path = val == '' ? '' : nw.getAbsolutePath(val);
-  this.handleSetter('alticon', 'SetAlticon', String, real_path);
+  this.handleSetter('alticon', 'SetAltIcon', String, real_path);
+});
+
+Tray.prototype.__defineGetter__('iconsAreTemplates', function() {
+  return this.handleGetter('iconsAreTemplates');
+});
+
+Tray.prototype.__defineSetter__('iconsAreTemplates', function(val) {
+  this.handleSetter('iconsAreTemplates', 'SetIconsAreTemplates', Boolean, val);
 });
 
 Tray.prototype.__defineGetter__('tooltip', function() {
@@ -119,4 +140,14 @@ Tray.prototype.remove = function() {
   nw.callObjectMethod(this, 'Remove', []);
 }
 
+Tray.prototype.handleEvent = function(ev) {
+ if (ev == 'click') {
+   // Emit click handler
+   if (typeof this.click == 'function'){
+     this.click();
+   }
+ }
+ // Emit generate event handler
+ exports.Base.prototype.handleEvent.apply(this, arguments);
+}
 exports.Tray = Tray;

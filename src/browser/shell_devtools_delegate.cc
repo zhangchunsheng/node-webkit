@@ -21,8 +21,10 @@
 #include "content/nw/src/browser/shell_devtools_delegate.h"
 
 #include "base/files/file_path.h"
+#include "base/strings/utf_string_conversions.h"
 #include "content/nw/src/nw_shell.h"
 #include "content/public/browser/devtools_http_handler.h"
+#include "content/public/browser/devtools_target.h"
 #include "content/public/browser/web_contents.h"
 #include "grit/nw_resources.h"
 #include "net/socket/tcp_listen_socket.h"
@@ -38,7 +40,7 @@ ShellDevToolsDelegate::ShellDevToolsDelegate(BrowserContext* browser_context,
   devtools_http_handler_ = DevToolsHttpHandler::Start(
       new net::TCPListenSocketFactory("127.0.0.1", port),
       "",
-      this);
+      this, base::FilePath());
 }
 
 ShellDevToolsDelegate::~ShellDevToolsDelegate() {
@@ -66,30 +68,91 @@ std::string ShellDevToolsDelegate::GetPageThumbnailData(const GURL& url) {
   return "";
 }
 
-RenderViewHost* ShellDevToolsDelegate::CreateNewTarget() {
+scoped_ptr<net::StreamListenSocket>
+ShellDevToolsDelegate::CreateSocketForTethering(
+    net::StreamListenSocket::Delegate* delegate,
+    std::string* name) {
+    return scoped_ptr<net::StreamListenSocket>();
+}
+
+const char kTargetTypePage[] = "page";
+
+class Target : public content::DevToolsTarget {
+ public:
+  explicit Target(WebContents* web_contents);
+
+  virtual std::string GetId() const OVERRIDE { return id_; }
+  virtual std::string GetParentId() const OVERRIDE { return std::string(); }
+  virtual std::string GetType() const OVERRIDE { return kTargetTypePage; }
+  virtual std::string GetTitle() const OVERRIDE { return title_; }
+  virtual std::string GetDescription() const OVERRIDE { return description_; }
+  virtual GURL GetURL() const OVERRIDE { return url_; }
+  virtual GURL GetFaviconURL() const OVERRIDE { return GURL(); }
+  virtual base::TimeTicks GetLastActivityTime() const OVERRIDE {
+    return last_activity_time_;
+  }
+  virtual bool IsAttached() const OVERRIDE {
+    return agent_host_->IsAttached();
+  }
+  virtual scoped_refptr<DevToolsAgentHost> GetAgentHost() const OVERRIDE {
+    return agent_host_;
+  }
+  virtual bool Activate() const OVERRIDE;
+  virtual bool Close() const OVERRIDE;
+
+ private:
+  scoped_refptr<DevToolsAgentHost> agent_host_;
+  std::string id_;
+  std::string title_;
+  std::string description_;
+  GURL url_;
+  base::TimeTicks last_activity_time_;
+};
+
+Target::Target(WebContents* web_contents) {
+  agent_host_ =
+      DevToolsAgentHost::GetOrCreateFor(web_contents);
+  id_ = agent_host_->GetId();
+  title_ = base::UTF16ToUTF8(web_contents->GetTitle());
+  url_ = web_contents->GetURL();
+  last_activity_time_ = web_contents->GetLastActiveTime();
+}
+
+bool Target::Activate() const {
+  WebContents* web_contents = agent_host_->GetWebContents();
+  if (!web_contents)
+    return false;
+  web_contents->GetDelegate()->ActivateContents(web_contents);
+  return true;
+}
+
+bool Target::Close() const {
+  WebContents* web_contents = agent_host_->GetWebContents();
+  if (!web_contents)
+    return false;
+  web_contents->GetRenderViewHost()->ClosePage();
+  return true;
+}
+
+void ShellDevToolsDelegate::EnumerateTargets(TargetCallback callback) {
+  TargetList targets;
+  std::vector<WebContents*> wc_list =
+      content::DevToolsAgentHost::GetInspectableWebContents();
+  for (std::vector<WebContents*>::iterator it = wc_list.begin();
+       it != wc_list.end();
+       ++it) {
+    targets.push_back(new Target(*it));
+  }
+  callback.Run(targets);
+}
+
+scoped_ptr<DevToolsTarget> ShellDevToolsDelegate::CreateNewTarget(const GURL& url) {
   Shell* shell = Shell::Create(browser_context_,
                                GURL("nw:blank"),
                                NULL,
                                MSG_ROUTING_NONE,
                                NULL);
-  return shell->web_contents()->GetRenderViewHost();
-}
-
-DevToolsHttpHandlerDelegate::TargetType
-ShellDevToolsDelegate::GetTargetType(RenderViewHost*) {
-  return kTargetTypeTab;
-}
-
-std::string ShellDevToolsDelegate::GetViewDescription(
-    content::RenderViewHost*) {
-  return std::string();
-}
-
-scoped_refptr<net::StreamListenSocket>
-ShellDevToolsDelegate::CreateSocketForTethering(
-    net::StreamListenSocket::Delegate* delegate,
-    std::string* name) {
-  return NULL;
+  return scoped_ptr<DevToolsTarget>(new Target(shell->web_contents()));
 }
 
 }  // namespace content

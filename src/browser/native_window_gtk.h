@@ -26,7 +26,7 @@
 
 #include "content/nw/src/browser/native_window.h"
 #include "third_party/skia/include/core/SkRegion.h"
-#include "ui/base/gtk/gtk_signal.h"
+#include "chrome/browser/ui/libgtk2ui/gtk2_signal.h"
 
 namespace nw {
 
@@ -48,20 +48,24 @@ class NativeWindowGtk : public NativeWindow {
   virtual void Restore() OVERRIDE;
   virtual void SetFullscreen(bool fullscreen) OVERRIDE;
   virtual bool IsFullscreen() OVERRIDE;
+  virtual void SetTransparent(bool transparent) OVERRIDE;
   virtual void SetSize(const gfx::Size& size) OVERRIDE;
   virtual gfx::Size GetSize() OVERRIDE;
   virtual void SetMinimumSize(int width, int height) OVERRIDE;
   virtual void SetMaximumSize(int width, int height) OVERRIDE;
   virtual void SetResizable(bool resizable) OVERRIDE;
   virtual void SetAlwaysOnTop(bool top) OVERRIDE;
+  virtual void SetShowInTaskbar(bool show = true) OVERRIDE;
   virtual void SetPosition(const std::string& position) OVERRIDE;
   virtual void SetPosition(const gfx::Point& position) OVERRIDE;
   virtual gfx::Point GetPosition() OVERRIDE;
   virtual void SetTitle(const std::string& title) OVERRIDE;
-  virtual void FlashFrame(bool flash) OVERRIDE;
+  virtual void FlashFrame(int count) OVERRIDE;
+  virtual void SetBadgeLabel(const std::string& badge) OVERRIDE;
+  virtual void SetProgressBar(double progress) OVERRIDE;
   virtual void SetKiosk(bool kiosk) OVERRIDE;
   virtual bool IsKiosk() OVERRIDE;
-  virtual void SetMenu(api::Menu* menu) OVERRIDE;
+  virtual void SetMenu(nwapi::Menu* menu) OVERRIDE;
   virtual void SetInitialFocus(bool initial_focus) OVERRIDE;
   virtual bool InitialFocus() OVERRIDE;
   virtual void SetToolbarButtonEnabled(TOOLBAR_BUTTON button,
@@ -86,6 +90,9 @@ class NativeWindowGtk : public NativeWindow {
  private:
   // Set WebKit's style from current theme.
   void SetWebKitColorStyle();
+
+  //Use to bind shortcut
+  GtkAccelGroup *gtk_accel_group;
 
   // Create toolbar.
   void CreateToolbar();
@@ -116,6 +123,8 @@ class NativeWindowGtk : public NativeWindow {
                        GdkEventButton*);
   CHROMEGTK_CALLBACK_1(NativeWindowGtk, gboolean, OnMouseMoveEvent,
                        GdkEventMotion*);
+  CHROMEGTK_CALLBACK_1(NativeWindowGtk, gboolean, OnWindowConfigureEvent,
+                       GdkEvent*);
 
   GtkWindow* window_;
   GtkWidget* toolbar_;
@@ -146,6 +155,11 @@ class NativeWindowGtk : public NativeWindow {
 
   // True if the window should be resizable by the user.
   bool resizable_;
+
+  int last_x_;
+  int last_y_;
+  int last_width_;
+  int last_height_;
 
   DISALLOW_COPY_AND_ASSIGN(NativeWindowGtk);
 };

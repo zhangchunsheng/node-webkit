@@ -27,10 +27,10 @@
 
 #include <string.h>
 
-namespace api {
+namespace nwapi {
 
 MenuItem::MenuItem(int id,
-                   DispatcherHost* dispatcher_host,
+                   const base::WeakPtr<DispatcherHost>& dispatcher_host,
                    const base::DictionaryValue& option)
     : Base(id, dispatcher_host, option) {
   Create(option);
@@ -50,6 +50,10 @@ void MenuItem::Call(const std::string& method,
     std::string icon;
     arguments.GetString(0, &icon);
     SetIcon(icon);
+  } else if (method == "SetIconIsTemplate") {
+    bool isTemplate;
+    arguments.GetBoolean(0, &isTemplate);
+    SetIconIsTemplate(isTemplate);
   } else if (method == "SetTooltip") {
     std::string tooltip;
     arguments.GetString(0, &tooltip);
@@ -72,4 +76,4 @@ void MenuItem::Call(const std::string& method,
   }
 }
 
-}  // namespace api
+}  // namespace nwapi

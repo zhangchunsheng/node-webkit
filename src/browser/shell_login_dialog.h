@@ -1,25 +1,9 @@
-// Copyright (c) 2012 Intel Corp
-// Copyright (c) 2012 The Chromium Authors
-// 
-// Permission is hereby granted, free of charge, to any person obtaining a copy 
-// of this software and associated documentation files (the "Software"), to deal
-//  in the Software without restriction, including without limitation the rights
-//  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell co
-// pies of the Software, and to permit persons to whom the Software is furnished
-//  to do so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice shall be included in al
-// l copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IM
-// PLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNES
-// S FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
-//  OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WH
-// ETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-//  CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+// Copyright 2013 The Chromium Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
 
-#ifndef CONTENT_NW_SRC_BROWSER_SHELL_LOGIN_DIALOG_H_
-#define CONTENT_NW_SRC_BROWSER_SHELL_LOGIN_DIALOG_H_
+#ifndef CONTENT_SHELL_BROWSER_SHELL_LOGIN_DIALOG_H_
+#define CONTENT_SHELL_BROWSER_SHELL_LOGIN_DIALOG_H_
 
 #include "base/compiler_specific.h"
 #include "base/strings/string16.h"
@@ -27,6 +11,11 @@
 
 #if defined(TOOLKIT_GTK)
 #include "ui/base/gtk/gtk_signal.h"
+#endif
+
+#if defined(OS_WIN) || defined(OS_LINUX)
+#include "ui/views/window/dialog_delegate.h"
+#include "login_view.h"
 #endif
 
 #if defined(OS_MACOSX)
@@ -46,7 +35,11 @@ namespace content {
 
 // This class provides a dialog box to ask the user for credentials. Useful in
 // ResourceDispatcherHostDelegate::CreateLoginDelegate.
+#if defined(OS_WIN) || defined(OS_LINUX)
+class ShellLoginDialog : public ResourceDispatcherHostLoginDelegate, public views::DialogDelegate {
+#else
 class ShellLoginDialog : public ResourceDispatcherHostLoginDelegate {
+#endif
  public:
   // Threading: IO thread.
   ShellLoginDialog(net::AuthChallengeInfo* auth_info, net::URLRequest* request);
@@ -59,19 +52,39 @@ class ShellLoginDialog : public ResourceDispatcherHostLoginDelegate {
   // the aforementioned platform specific code may not have access to private
   // members. Not to be called from client code.
   // Threading: UI thread.
-  void UserAcceptedAuth(const string16& username, const string16& password);
+  void UserAcceptedAuth(const base::string16& username,
+                        const base::string16& password);
   void UserCancelledAuth();
+
+#if defined(OS_WIN) || defined(OS_LINUX)
+  // views::DialogDelegate methods:
+  virtual base::string16 GetDialogButtonLabel(ui::DialogButton button) const OVERRIDE;
+  virtual base::string16 GetWindowTitle() const OVERRIDE;
+  virtual void WindowClosing() OVERRIDE;
+  virtual void DeleteDelegate() OVERRIDE;
+  virtual ui::ModalType GetModalType() const OVERRIDE;
+  virtual bool Cancel() OVERRIDE;
+  virtual bool Accept() OVERRIDE;
+  virtual views::View* GetInitiallyFocusedView() OVERRIDE;
+  virtual views::View* GetContentsView() OVERRIDE;
+  virtual views::Widget* GetWidget() OVERRIDE;
+  virtual const views::Widget* GetWidget() const OVERRIDE;
+#endif
 
  protected:
   // Threading: any
   virtual ~ShellLoginDialog();
+  void ReleaseSoon();
+
+  int render_process_id_;
+  int render_frame_id_;
 
  private:
   // All the methods that begin with Platform need to be implemented by the
   // platform specific LoginDialog implementation.
   // Creates the dialog.
   // Threading: UI thread.
-  void PlatformCreateDialog(const string16& message);
+  void PlatformCreateDialog(const base::string16& message);
   // Called from the destructor to let each platform do any necessary cleanup.
   // Threading: UI thread.
   void PlatformCleanUp();
@@ -81,13 +94,13 @@ class ShellLoginDialog : public ResourceDispatcherHostLoginDelegate {
 
   // Sets up dialog creation.
   // Threading: UI thread.
-  void PrepDialog(const string16& host, const string16& realm);
+  void PrepDialog(const base::string16& host, const base::string16& realm);
 
   // Sends the authentication to the requester.
   // Threading: IO thread.
   void SendAuthToRequester(bool success,
-                           const string16& username,
-                           const string16& password);
+                           const base::string16& username,
+                           const base::string16& password);
 
   // Who/where/what asked for the authentication.
   // Threading: IO thread.
@@ -100,19 +113,19 @@ class ShellLoginDialog : public ResourceDispatcherHostLoginDelegate {
 #if defined(OS_MACOSX)
   // Threading: UI thread.
   ShellLoginDialogHelper* helper_;  // owned
-#elif defined(OS_WIN)
-  HWND dialog_win_;
-  string16 message_text_;
-  static INT_PTR CALLBACK DialogProc(HWND dialog, UINT message, WPARAM wparam,
-                                     LPARAM lparam);
 #elif defined(TOOLKIT_GTK)
   GtkWidget* username_entry_;
   GtkWidget* password_entry_;
   GtkWidget* root_;
   CHROMEGTK_CALLBACK_1(ShellLoginDialog, void, OnResponse, int);
+  CHROMEGTK_CALLBACK_0(ShellLoginDialog, void, OnDestroy);
+#elif defined(OS_WIN) || defined(OS_LINUX)
+  LoginView* login_view_;
+
+  views::Widget* dialog_;
 #endif
 };
 
 }  // namespace content
 
-#endif  // CONTENT_NW_SRC_BROWSER_SHELL_LOGIN_DIALOG_H_
+#endif  // CONTENT_SHELL_BROWSER_SHELL_LOGIN_DIALOG_H_

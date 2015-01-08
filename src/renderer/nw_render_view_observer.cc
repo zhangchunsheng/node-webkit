@@ -20,18 +20,27 @@
 
 #include "content/nw/src/renderer/nw_render_view_observer.h"
 
+#include <v8.h>
+
+#include "base/file_util.h"
+#include "base/strings/utf_string_conversions.h"
 #include "content/nw/src/renderer/common/render_messages.h"
 #include "content/public/renderer/render_view.h"
+#include "content/renderer/render_view_impl.h"
 #include "skia/ext/platform_canvas.h"
 #include "third_party/WebKit/public/platform/WebRect.h"
 #include "third_party/WebKit/public/platform/WebSize.h"
-#include "third_party/WebKit/public/web/WebFrame.h"
+#include "third_party/WebKit/public/web/WebLocalFrame.h"
+#include "third_party/WebKit/public/web/WebScriptSource.h"
 #include "third_party/WebKit/public/web/WebView.h"
-#include "webkit/glue/webkit_glue.h"
 
-using WebKit::WebFrame;
-using WebKit::WebRect;
-using WebKit::WebSize;
+using content::RenderView;
+using content::RenderViewImpl;
+
+using blink::WebFrame;
+using blink::WebRect;
+using blink::WebScriptSource;
+using blink::WebSize;
 
 namespace nw {
 
@@ -70,7 +79,40 @@ void NwRenderViewObserver::OnCaptureSnapshot() {
   Send(new NwViewHostMsg_Snapshot(routing_id(), snapshot));
 }
 
-bool NwRenderViewObserver::CaptureSnapshot(WebKit::WebView* view,
+void NwRenderViewObserver::DidFinishDocumentLoad(blink::WebLocalFrame* frame) {
+  RenderViewImpl* rv = RenderViewImpl::FromWebView(frame->view());
+  if (!rv)
+    return;
+  std::string js_fn = rv->renderer_preferences_.nw_inject_js_doc_end;
+  OnDocumentCallback(rv, js_fn, frame);
+}
+
+void NwRenderViewObserver::DidCreateDocumentElement(blink::WebLocalFrame* frame) {
+  RenderViewImpl* rv = RenderViewImpl::FromWebView(frame->view());
+  if (!rv)
+    return;
+  std::string js_fn = rv->renderer_preferences_.nw_inject_js_doc_start;
+  OnDocumentCallback(rv, js_fn, frame);
+}
+
+void NwRenderViewObserver::OnDocumentCallback(RenderViewImpl* rv,
+                                              const std::string& js_fn,
+                                              blink::WebFrame* frame) {
+  if (js_fn.empty())
+    return;
+  std::string content;
+  base::FilePath path = rv->renderer_preferences_.nw_app_root_path.AppendASCII(js_fn);
+  if (!base::ReadFileToString(path, &content)) {
+    LOG(WARNING) << "Failed to load js script file: " << path.value();
+    return;
+  }
+  base::string16 jscript = base::UTF8ToUTF16(content);
+  v8::HandleScope handle_scope(v8::Isolate::GetCurrent());
+  // v8::Handle<v8::Value> result;
+  frame->executeScriptAndReturnValue(WebScriptSource(jscript));
+}
+
+bool NwRenderViewObserver::CaptureSnapshot(blink::WebView* view,
                                            SkBitmap* snapshot) {
   view->layout();
   const WebSize& size = view->size();
@@ -86,10 +128,10 @@ bool NwRenderViewObserver::CaptureSnapshot(WebKit::WebView* view,
   // TODO: Add a way to snapshot the whole page, not just the currently
   // visible part.
 
-  SkDevice* device = skia::GetTopDevice(*canvas);
+  SkBaseDevice* device = skia::GetTopDevice(*canvas);
 
   const SkBitmap& bitmap = device->accessBitmap(false);
-  if (!bitmap.copyTo(snapshot, SkBitmap::kARGB_8888_Config))
+  if (!bitmap.copyTo(snapshot, kN32_SkColorType))
     return false;
 
   return true;

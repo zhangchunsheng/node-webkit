@@ -30,6 +30,9 @@
 #include "content/public/browser/notification_observer.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
+#if defined(OS_WIN) || defined(OS_LINUX)
+#include "components/web_modal/web_contents_modal_dialog_manager_delegate.h"
+#endif
 #include "ipc/ipc_channel.h"
 
 namespace base {
@@ -61,6 +64,9 @@ using base::FilePath;
 // This represents one window of the Content Shell, i.e. all the UI including
 // buttons and url bar, as well as the web content area.
 class Shell : public WebContentsDelegate,
+#if defined(OS_WIN) || defined(OS_LINUX)
+              public web_modal::WebContentsModalDialogManagerDelegate,
+#endif
               public content::WebContentsObserver,
               public NotificationObserver {
  public:
@@ -91,6 +97,7 @@ class Shell : public WebContentsDelegate,
 
   // Returns the Shell object corresponding to the given RenderViewHost.
   static Shell* FromRenderViewHost(RenderViewHost* rvh);
+  static void Cleanup();
 
   void LoadURL(const GURL& url);
   void GoBackOrForward(int offset);
@@ -102,9 +109,10 @@ class Shell : public WebContentsDelegate,
   bool devToolsOpen() { return devtools_window_.get() != NULL; }
   // Send an event to renderer.
   void SendEvent(const std::string& event, const std::string& arg1 = "");
+  void SendEvent(const std::string& event, const base::ListValue& args);
 
   // Decide whether we should close the window.
-  bool ShouldCloseWindow();
+  bool ShouldCloseWindow(bool quit = false);
 
   virtual GURL OverrideDOMStorageOrigin(const GURL& origin);
 
@@ -112,6 +120,7 @@ class Shell : public WebContentsDelegate,
   void PrintCriticalError(const std::string& title,
                           const std::string& content);
 
+  int WrapDevToolsWindow();
   // Returns the currently open windows.
   static std::vector<Shell*>& windows() { return windows_; }
 
@@ -122,7 +131,7 @@ class Shell : public WebContentsDelegate,
   static int exit_code() { return exit_code_; }
 
   WebContents* web_contents() const { return web_contents_.get(); }
-  nw::NativeWindow* window() { return window_.get(); }
+  nw::NativeWindow* window() const { return window_.get(); }
 
   void set_force_close(bool force) { force_close_ = force; }
   bool is_devtools() const { return is_devtools_; }
@@ -131,6 +140,13 @@ class Shell : public WebContentsDelegate,
   void set_id(int id) { id_ = id; }
   int id() const { return id_; }
 
+  virtual void RenderViewCreated(RenderViewHost* render_view_host) OVERRIDE;
+#if defined(OS_WIN) || defined(OS_LINUX)
+  virtual void SetWebContentsBlocked(content::WebContents* web_contents, bool) OVERRIDE {}
+  virtual bool IsWebContentsVisible(content::WebContents* web_contents) OVERRIDE;
+  virtual web_modal::WebContentsModalDialogHost* GetWebContentsModalDialogHost() OVERRIDE;
+#endif
+
  protected:
   // content::WebContentsObserver implementation.
   virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
@@ -138,22 +154,30 @@ class Shell : public WebContentsDelegate,
   // content::WebContentsDelegate implementation.
   virtual WebContents* OpenURLFromTab(WebContents* source,
                                       const OpenURLParams& params) OVERRIDE;
-  virtual void LoadingStateChanged(WebContents* source) OVERRIDE;
+  virtual void LoadingStateChanged(WebContents* source,
+                                   bool to_different_document) OVERRIDE;
   virtual void ActivateContents(content::WebContents* contents) OVERRIDE;
   virtual void DeactivateContents(content::WebContents* contents) OVERRIDE;
   virtual void CloseContents(WebContents* source) OVERRIDE;
   virtual void MoveContents(WebContents* source, const gfx::Rect& pos) OVERRIDE;
   virtual bool IsPopupOrPanel(const WebContents* source) const OVERRIDE;
   virtual void WebContentsCreated(WebContents* source_contents,
-                                  int64 source_frame_id,
-                                  const string16& frame_name,
+                                  int source_frame_id,
+                                  const base::string16& frame_name,
                                   const GURL& target_url,
-                                  WebContents* new_contents) OVERRIDE;
-#if defined(OS_WIN)
+                                  WebContents* new_contents,
+                                  const base::string16& nw_window_manifest) OVERRIDE;
+  virtual void ToggleFullscreenModeForTab(WebContents* web_contents,
+                                          bool enter_fullscreen) OVERRIDE;
+  virtual bool IsFullscreenForTabOrPending(
+      const WebContents* web_contents) const OVERRIDE;
+#if defined(OS_WIN) || defined(OS_LINUX)
   virtual void WebContentsFocused(WebContents* contents) OVERRIDE;
 #endif
   virtual content::ColorChooser* OpenColorChooser(
-      content::WebContents* web_contents, SkColor color) OVERRIDE;
+      content::WebContents* web_contents,
+      SkColor color,
+      const std::vector<ColorSuggestion>& suggestions) OVERRIDE;
   virtual void RunFileChooser(
       content::WebContents* web_contents,
       const content::FileChooserParams& params) OVERRIDE;
@@ -171,9 +195,9 @@ class Shell : public WebContentsDelegate,
       const NativeWebKeyboardEvent& event) OVERRIDE;
   virtual bool AddMessageToConsole(WebContents* source,
                                    int32 level,
-                                   const string16& message,
+                                   const base::string16& message,
                                    int32 line_no,
-                                   const string16& source_id) OVERRIDE;
+                                   const base::string16& source_id) OVERRIDE;
   virtual void RequestMediaAccessPermission(
       WebContents* web_contents,
       const MediaStreamRequest& request,
@@ -198,6 +222,8 @@ class Shell : public WebContentsDelegate,
   // Weak potiner to devtools window.
   base::WeakPtr<Shell> devtools_window_;
   base::WeakPtr<Shell> devtools_owner_;
+
+  int devtools_window_id_;
 #if 0
   ShellDevToolsFrontend* devtools_frontend_;
 #endif

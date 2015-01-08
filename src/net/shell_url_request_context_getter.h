@@ -26,15 +26,18 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_ptr.h"
 #include "content/public/browser/content_browser_client.h"
+#include "net/cert/cert_trust_anchor_provider.h"
 #include "net/url_request/url_request_context_getter.h"
 #include "net/url_request/url_request_job_factory.h"
 
 
 namespace net {
+class HttpAuthHandlerFactory;
 class HostResolver;
 class NetworkDelegate;
 class ProxyConfigService;
 class URLRequestContextStorage;
+class URLSecurityManager;
 }
 
 namespace base{
@@ -43,7 +46,9 @@ class MessageLoop;
 
 namespace content {
 
-class ShellURLRequestContextGetter : public net::URLRequestContextGetter {
+class ShellBrowserContext;
+
+ class ShellURLRequestContextGetter : public net::URLRequestContextGetter, public net::CertTrustAnchorProvider {
  public:
   ShellURLRequestContextGetter(
       bool ignore_certificate_errors,
@@ -51,7 +56,12 @@ class ShellURLRequestContextGetter : public net::URLRequestContextGetter {
       const base::FilePath& root_path,
       base::MessageLoop* io_loop,
       base::MessageLoop* file_loop,
-      ProtocolHandlerMap* protocol_handlers);
+      ProtocolHandlerMap* protocol_handlers,
+      ShellBrowserContext*,
+      const std::string& auth_schemes,
+      const std::string& auth_server_whitelist,
+      const std::string& auth_delegate_whitelist,
+      const std::string& gssapi_library_name);
 
   // net::URLRequestContextGetter implementation.
   virtual net::URLRequestContext* GetURLRequestContext() OVERRIDE;
@@ -60,13 +70,29 @@ class ShellURLRequestContextGetter : public net::URLRequestContextGetter {
 
   net::HostResolver* host_resolver();
 
+  void SetAdditionalTrustAnchors(const net::CertificateList& trust_anchors);
+
+  // net::CertTrustAnchorProvider implementation.
+  virtual const net::CertificateList& GetAdditionalTrustAnchors() OVERRIDE;
+
  protected:
   virtual ~ShellURLRequestContextGetter();
+  net::HttpAuthHandlerFactory* CreateDefaultAuthHandlerFactory(net::HostResolver* resolver);
 
  private:
   bool ignore_certificate_errors_;
   base::FilePath data_path_;
   base::FilePath root_path_;
+
+  std::string auth_schemes_;
+  bool negotiate_disable_cname_lookup_;
+  bool negotiate_enable_port_;
+  std::string auth_server_whitelist_;
+  std::string auth_delegate_whitelist_;
+  std::string gssapi_library_name_;
+  // std::vector<GURL> spdyproxy_auth_origins_;
+  net::CertificateList trust_anchors_;
+
   base::MessageLoop* io_loop_;
   base::MessageLoop* file_loop_;
 
@@ -74,7 +100,9 @@ class ShellURLRequestContextGetter : public net::URLRequestContextGetter {
   scoped_ptr<net::NetworkDelegate> network_delegate_;
   scoped_ptr<net::URLRequestContextStorage> storage_;
   scoped_ptr<net::URLRequestContext> url_request_context_;
+  scoped_ptr<net::URLSecurityManager> url_security_manager_;
   ProtocolHandlerMap protocol_handlers_;
+  ShellBrowserContext* browser_context_;
 
   DISALLOW_COPY_AND_ASSIGN(ShellURLRequestContextGetter);
 };

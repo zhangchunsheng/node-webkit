@@ -23,19 +23,28 @@
 #include <gdk/gdk.h>
 
 #include "base/values.h"
-#include "chrome/browser/ui/gtk/gtk_window_util.h"
+#include "base/environment.h"
+//#include "chrome/browser/ui/gtk/gtk_window_util.h"
+//#include "chrome/browser/ui/gtk/unity_service.h"
 #include "extensions/common/draggable_region.h"
 #include "content/nw/src/api/menu/menu.h"
 #include "content/nw/src/common/shell_switches.h"
 #include "content/nw/src/nw_shell.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/web_contents.h"
-#include "content/public/browser/web_contents_view.h"
 #include "content/public/common/renderer_preferences.h"
 #include "ui/base/x/x11_util.h"
-#include "ui/gfx/gtk_util.h"
 #include "ui/gfx/rect.h"
-#include "ui/gfx/skia_utils_gtk.h"
+//#include "ui/gfx/skia_utils_gtk.h"
+
+namespace ShellIntegrationLinux {
+std::string GetDesktopName(base::Environment* env) {
+  std::string name;
+  if (env->GetVar("NW_DESKTOP", &name) && !name.empty())
+    return name;
+  return "nw.desktop";
+}
+}
 
 namespace nw {
 
@@ -54,17 +63,25 @@ NativeWindowGtk::NativeWindowGtk(const base::WeakPtr<content::Shell>& shell,
       state_(GDK_WINDOW_STATE_WITHDRAWN),
       content_thinks_its_fullscreen_(false),
       frame_cursor_(NULL),
-      resizable_(true) {
+      resizable_(true),
+      last_x_(-1), last_y_(-1),
+      last_width_(-1), last_height_(-1)
+{
   window_ = GTK_WINDOW(gtk_window_new(GTK_WINDOW_TOPLEVEL));
+
+  gtk_accel_group = gtk_accel_group_new();
+  gtk_window_add_accel_group(window_,gtk_accel_group);
 
   vbox_ = gtk_vbox_new(FALSE, 0);
   gtk_widget_show(vbox_);
   gtk_container_add(GTK_CONTAINER(window_), vbox_);
 
+#if 0 //FIXME
   // Set window icon.
   gfx::Image icon = app_icon();
   if (!icon.IsEmpty())
     gtk_window_set_icon(window_, icon.ToGdkPixbuf());
+#endif
 
   // Always create toolbar since we need to create a url entry.
   CreateToolbar();
@@ -76,7 +93,7 @@ NativeWindowGtk::NativeWindowGtk(const base::WeakPtr<content::Shell>& shell,
     gtk_box_pack_start(GTK_BOX(vbox_), toolbar_, FALSE, FALSE, 0);
 
   gfx::NativeView native_view =
-      web_contents()->GetView()->GetNativeView();
+      web_contents()->GetNativeView();
   gtk_widget_show(native_view);
   gtk_container_add(GTK_CONTAINER(vbox_), native_view);
 
@@ -93,6 +110,9 @@ NativeWindowGtk::NativeWindowGtk(const base::WeakPtr<content::Shell>& shell,
   } else {
     gtk_window_set_default_size(window_, width, height);
   }
+
+  last_width_  = width;
+  last_height_ = height;
 
   // Hide titlebar when {frame: false} specified.
   if (!has_frame_)
@@ -124,6 +144,8 @@ NativeWindowGtk::NativeWindowGtk(const base::WeakPtr<content::Shell>& shell,
                    G_CALLBACK(OnWindowStateThunk), this);
   g_signal_connect(window_, "delete-event",
                    G_CALLBACK(OnWindowDeleteEventThunk), this);
+  g_signal_connect(window_, "configure-event",
+                   G_CALLBACK(OnWindowConfigureEventThunk), this);
   if (!has_frame_) {
     g_signal_connect(window_, "button-press-event",
                      G_CALLBACK(OnButtonPressThunk), this);
@@ -255,6 +277,10 @@ void NativeWindowGtk::SetAlwaysOnTop(bool top) {
   gtk_window_set_keep_above(window_, top ? TRUE : FALSE);
 }
 
+void NativeWindowGtk::SetShowInTaskbar(bool show) {
+  gtk_window_set_skip_taskbar_hint(window_, show ? FALSE : TRUE);
+}
+
 void NativeWindowGtk::SetPosition(const std::string& position) {
   if (position == "center")
     gtk_window_set_position(window_, GTK_WIN_POS_CENTER);
@@ -279,8 +305,20 @@ void NativeWindowGtk::SetTitle(const std::string& title) {
   gtk_window_set_title(GTK_WINDOW(window_), title.c_str());
 }
 
-void NativeWindowGtk::FlashFrame(bool flash) {
-  gtk_window_set_urgency_hint(window_, flash);
+void NativeWindowGtk::FlashFrame(int count) {
+  gtk_window_set_urgency_hint(window_, count);
+}
+
+void NativeWindowGtk::SetBadgeLabel(const std::string& badge) {
+  if (unity::IsRunning()) {
+    unity::SetDownloadCount(atoi(badge.c_str()));
+  }
+}
+
+void NativeWindowGtk::SetProgressBar(double progress) {
+  if (unity::IsRunning()) {
+    unity::SetProgressFraction(progress);
+  }
 }
 
 void NativeWindowGtk::SetKiosk(bool kiosk) {
@@ -291,7 +329,8 @@ bool NativeWindowGtk::IsKiosk() {
   return IsFullscreen();
 }
 
-void NativeWindowGtk::SetMenu(api::Menu* menu) {
+void NativeWindowGtk::SetMenu(nwapi::Menu* menu) {
+  menu->UpdateKeys(gtk_accel_group);
   gtk_box_pack_start(GTK_BOX(vbox_), menu->menu_, FALSE, FALSE, 0);
   gtk_box_reorder_child(GTK_BOX(vbox_), menu->menu_, 0);
 }
@@ -576,6 +615,38 @@ gboolean NativeWindowGtk::OnWindowDeleteEvent(GtkWidget* widget,
   if (shell() && !shell()->ShouldCloseWindow())
     return TRUE;
 
+  return FALSE;
+}
+
+gboolean NativeWindowGtk::OnWindowConfigureEvent(GtkWidget* window,
+                                             GdkEvent* event)
+{
+  int x, y;
+  int w, h;
+
+  x = event->configure.x;
+  y = event->configure.y;
+  if (x != last_x_ || y != last_y_) {
+    last_x_ = x;
+    last_y_ = y;
+    base::ListValue args;
+    args.AppendInteger(x);
+    args.AppendInteger(y);
+    if (shell())
+      shell()->SendEvent("move", args);
+  }
+
+  w = event->configure.width;
+  h = event->configure.height;
+  if (w != last_width_ || h != last_height_) {
+    last_width_ = w;
+    last_height_ = h;
+    base::ListValue args;
+    args.AppendInteger(w);
+    args.AppendInteger(h);
+    if (shell())
+      shell()->SendEvent("resize", args);
+  }
   return FALSE;
 }
 

@@ -4,6 +4,9 @@ import subprocess
 
 native_modules = ['nw_test_loop_without_handle',
                   'bignum',
+                  'dtrace-provider',
+                  'ref',
+                  'lame',
                   ];
 
 script_dir = os.path.dirname(__file__)
@@ -49,6 +52,22 @@ exec_args = ['nw-gyp',
 win = sys.platform in ('win32', 'cygwin')
 
 
+
+#We need to rebuild a submodule in http-auth
+apache_crypt_path = os.path.join(
+  script_dir,
+  "..",
+  "tests",
+  "node_modules",
+  "http-auth",
+  "node_modules",
+  "htpasswd",
+  "node_modules",
+  "apache-crypt")
+os.chdir(apache_crypt_path)
+subprocess.call(exec_args)
+
+
 for dir in native_modules:
 
   if dir == 'bignum' and win:
@@ -59,6 +78,7 @@ for dir in native_modules:
   #exec_args[1] = os.path.relpath(nw_gyp_script, os.getcwd())
   subprocess.call(exec_args)
   #os.execl(node_gyp_script, '', 'build')
+
 
 
 os.chdir(cur_dir)

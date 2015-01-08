@@ -47,7 +47,7 @@ StandardMenusMac::~StandardMenusMac() {
 void StandardMenusMac::BuildAppleMenu() {
   NSMenu* appleMenu = [[NSMenu alloc] initWithTitle:@""];
 
-  string16 name = base::UTF8ToUTF16(app_name_);
+  base::string16 name = base::UTF8ToUTF16(app_name_);
   [appleMenu addItemWithTitle:l10n_util::GetNSStringFWithFixup(IDS_ABOUT_MAC, name)
                        action:@selector(orderFrontStandardAboutPanel:)
                 keyEquivalent:@""];
@@ -71,7 +71,7 @@ void StandardMenusMac::BuildAppleMenu() {
   [appleMenu addItem:[NSMenuItem separatorItem]];
 
   [appleMenu addItemWithTitle:l10n_util::GetNSStringFWithFixup(IDS_EXIT_MAC, name)
-                       action:@selector(closeAllWindows:)
+                       action:@selector(closeAllWindowsQuit:)
                 keyEquivalent:@"q"];
 
   // Add to menubar.

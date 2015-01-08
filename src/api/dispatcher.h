@@ -23,27 +23,48 @@
 
 #include "base/basictypes.h"
 #include "content/public/renderer/render_view_observer.h"
+#include "third_party/WebKit/public/web/WebNavigationPolicy.h"
+#include <v8.h>
 
 namespace base {
 class ListValue;
 }
 
-namespace WebKit {
-class WebFrame;
+namespace content {
+class RenderView;
 }
 
-namespace api {
+namespace blink {
+class WebFrame;
+class WebURLRequest;
+class WebView;
+}
+
+namespace nwapi {
 
 class Dispatcher : public content::RenderViewObserver {
  public:
   explicit Dispatcher(content::RenderView* render_view);
   virtual ~Dispatcher();
 
+  static v8::Handle<v8::Object> GetObjectRegistry();
+  static v8::Handle<v8::Value> GetWindowId(blink::WebFrame* frame);
+  static void ZoomLevelChanged(blink::WebView* web_view);
+  static void willHandleNavigationPolicy(
+    content::RenderView* rv,
+    blink::WebFrame* frame,
+    const blink::WebURLRequest& request,
+    blink::WebNavigationPolicy* policy,
+    blink::WebString* manifest);
+
  private:
   // RenderViewObserver implementation.
   virtual bool OnMessageReceived(const IPC::Message& message) OVERRIDE;
-  virtual void DraggableRegionsChanged(WebKit::WebFrame* frame) OVERRIDE;
-  virtual void ZoomLevelChanged() OVERRIDE;
+  virtual void DraggableRegionsChanged(blink::WebFrame* frame) OVERRIDE;
+  virtual void DidFinishDocumentLoad(blink::WebLocalFrame* frame) OVERRIDE;
+  virtual void DidCreateDocumentElement(blink::WebLocalFrame* frame) OVERRIDE;
+
+  void documentCallback(const char* ev, blink::WebLocalFrame* frame);
 
   void OnEvent(int object_id,
                std::string event,
@@ -52,7 +73,7 @@ class Dispatcher : public content::RenderViewObserver {
   DISALLOW_COPY_AND_ASSIGN(Dispatcher);
 };
 
-}  // namespace api
+}  // namespace nwapi
 
 #endif  // CONTENT_NW_SRC_API_DISPATCHER_H_
 

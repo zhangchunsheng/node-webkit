@@ -25,15 +25,16 @@
 #include "content/public/renderer/render_thread.h"
 #include "content/nw/src/api/api_messages.h"
 #include "content/nw/src/api/dispatcher_bindings.h"
-#include "content/shell/renderer/gc_extension.h"
-#include "webkit/glue/webkit_glue.h"
+//#include "content/shell/renderer/gc_extension.h"
 #include "third_party/node/src/node.h"
+#undef CHECK
+#include "third_party/node/src/node_internals.h"
 #include "third_party/node/src/req_wrap.h"
 #include "third_party/WebKit/public/web/WebCache.h"
 #include "third_party/WebKit/public/web/WebRuntimeFeatures.h"
 #include "v8/include/v8.h"
 
-using WebKit::WebRuntimeFeatures;
+using blink::WebRuntimeFeatures;
 
 namespace content {
 
@@ -60,50 +61,48 @@ bool ShellRenderProcessObserver::OnControlMessageReceived(
 
 void ShellRenderProcessObserver::OnRenderProcessWillShutdown() {
   // process.emit('exit');
-  node::EmitExit(node::process);
-  node::RunAtExit();
+  node::EmitExit(node::g_env);
+  node::RunAtExit(node::g_env);
 }
 
 void ShellRenderProcessObserver::WebKitInitialized() {
   webkit_initialized_ = true;
-  RenderThread::Get()->RegisterExtension(new api::DispatcherBindings());
-  WebRuntimeFeatures::enableStableFeatures(true);
-  WebRuntimeFeatures::enableExperimentalFeatures(true);
+  RenderThread::Get()->RegisterExtension(new nwapi::DispatcherBindings());
 }
 
 void ShellRenderProcessObserver::OnOpen(const std::string& path) {
-  v8::HandleScope handle_scope;
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+  v8::HandleScope scope(isolate);
 
   // the App object is stored in process["_nw_app"].
-  v8::Local<v8::Object> process = node::g_context->Global()->Get(
-      node::process_symbol)->ToObject();
-  v8::Local<v8::String> app_symbol = v8::String::NewSymbol("_nw_app");
+  v8::Local<v8::Object> process = node::g_env->process_object();
+  v8::Local<v8::String> app_symbol = v8::String::NewFromUtf8(isolate, "_nw_app", v8::String::kInternalizedString);
   if (process->Has(app_symbol)) {
     // process["_nw_app"].emit(path).
     v8::Local<v8::Object> app = process->Get(app_symbol)->ToObject();
     v8::Local<v8::Function> emit = v8::Local<v8::Function>::Cast(
-        app->Get(v8::String::New("emit")));
+        app->Get(v8::String::NewFromUtf8(isolate, "emit")));
     v8::Local<v8::Value> argv[] = {
-        v8::String::New("open"), v8::String::New(path.c_str())
+        v8::String::NewFromUtf8(isolate, "open"), v8::String::NewFromUtf8(isolate, path.c_str())
     };
     emit->Call(app, 2, argv);
   }
 }
 
 void ShellRenderProcessObserver::OnReopen() {
-  v8::HandleScope handle_scope;
+  v8::Isolate* isolate = v8::Isolate::GetCurrent();
+  v8::HandleScope scope(isolate);
 
   // the App object is stored in process["_nw_app"].
-  v8::Local<v8::Object> process = node::g_context->Global()->Get(
-      node::process_symbol)->ToObject();
-  v8::Local<v8::String> app_symbol = v8::String::NewSymbol("_nw_app");
+  v8::Local<v8::Object> process = node::g_env->process_object();
+  v8::Local<v8::String> app_symbol = v8::String::NewFromUtf8(isolate, "_nw_app", v8::String::kInternalizedString);
   if (process->Has(app_symbol)) {
     // process["_nw_app"].emit(path).
     v8::Local<v8::Object> app = process->Get(app_symbol)->ToObject();
     v8::Local<v8::Function> emit = v8::Local<v8::Function>::Cast(
-        app->Get(v8::String::New("emit")));
+        app->Get(v8::String::NewFromUtf8(isolate, "emit")));
     v8::Local<v8::Value> argv[] = {
-        v8::String::New("reopen")
+        v8::String::NewFromUtf8(isolate, "reopen")
     };
     emit->Call(app, 1, argv);
   }
@@ -111,7 +110,7 @@ void ShellRenderProcessObserver::OnReopen() {
 
 void ShellRenderProcessObserver::OnClearCache() {
   if (webkit_initialized_)
-    WebKit::WebCache::clear();
+    blink::WebCache::clear();
 }
 
 }  // namespace content

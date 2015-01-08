@@ -20,8 +20,10 @@ namespace nw {
 class Package;
 }
 
+namespace base {
 class CommandLine;
 class FilePath;
+}
 
 namespace printing {
 class PrintJobManager;
@@ -45,7 +47,9 @@ class ShellBrowserMainParts : public BrowserMainParts {
   virtual void PostMainMessageLoopStart() OVERRIDE;
   virtual bool MainMessageLoopRun(int* result_code) OVERRIDE;
   virtual void PostMainMessageLoopRun() OVERRIDE;
-  virtual int PreCreateThreads() OVERRIDE;
+  virtual int  PreCreateThreads() OVERRIDE;
+  virtual void PostDestroyThreads() OVERRIDE;
+  virtual void ToolkitInitialized() OVERRIDE;
 
   // Init browser context and every thing
   void Init();
@@ -77,7 +81,6 @@ class ShellBrowserMainParts : public BrowserMainParts {
   bool run_message_loop_;
 
   ShellDevToolsDelegate* devtools_delegate_;
-  content::RenderViewHost::CreatedCallback rvh_callback_;
   ProcessSingleton::NotifyResult notify_result_;
 
   //base::WeakPtrFactory<ShellBrowserMainParts> weak_factory_;

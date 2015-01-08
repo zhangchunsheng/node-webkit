@@ -72,6 +72,11 @@ const char kmResizable[]  = "resizable";
 const char kmAsDesktop[]  = "as_desktop";
 const char kmFullscreen[] = "fullscreen";
 const char kmInitialFocus[] = "focus";
+const char kmTransparent[] = "transparent";
+const char kmDisableTransparency[] = "disable-transparency";
+
+// Make windows icon hide show or hide in taskbar.
+const char kmShowInTaskbar[] = "show_in_taskbar";
 
 // Start with the kiosk mode, see Opera's page for description:
 // http://www.opera.com/support/mastering/kiosk/
@@ -79,6 +84,9 @@ const char kmKiosk[] = "kiosk";
 
 // Make windows stays on the top of all other windows.
 const char kmAlwaysOnTop[] = "always-on-top";
+
+// Make window visible on all workspaces.
+const char kmVisibleOnAllWorkspaces[] = "visible-on-all-workspaces";
 
 // Whether we should support WebGL.
 const char kmWebgl[] = "webgl";
@@ -98,10 +106,14 @@ const char kmUserAgent[] = "user-agent";
 const char kmRemotePages[] = "node-remote";
 
 const char kmNewInstance[] = "new-instance";
+const char kmInjectJSDocStart[]  = "inject-js-start";
+const char kmInjectJSDocEnd[]  = "inject-js-end";
+const char kmInjectCSS[] = "inject-css";
 
 #if defined(OS_WIN)
 // Enable conversion from vector to raster for any page.
 const char kPrintRaster[] = "print-raster";
 #endif
 
+const char kCrashDumpsDir[] = "crash-dumps-dir";
 }  // namespace switches

@@ -25,14 +25,17 @@
 #include "base/file_util.h"
 #include "base/path_service.h"
 #include "base/values.h"
+#include "chrome/common/chrome_switches.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/resource_context.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/common/content_switches.h"
 #include "content/nw/src/browser/shell_download_manager_delegate.h"
+#include "content/nw/src/browser/nw_form_database_service.h"
 #include "content/nw/src/common/shell_switches.h"
 #include "content/nw/src/net/shell_url_request_context_getter.h"
 #include "content/nw/src/nw_package.h"
+#include "net/cert/x509_certificate.h"
 
 #if defined(OS_WIN)
 #include "base/base_paths_win.h"
@@ -91,6 +94,14 @@ ShellBrowserContext::~ShellBrowserContext() {
   }
 }
 
+void ShellBrowserContext::PreMainMessageLoopRun() {
+  form_database_service_.reset(new nw::NwFormDatabaseService(path_));
+}
+
+nw::NwFormDatabaseService* ShellBrowserContext::GetFormDatabaseService() {
+  return form_database_service_.get();
+}
+
 void ShellBrowserContext::InitWhileIOAllowed() {
   CommandLine* cmd_line = CommandLine::ForCurrentProcess();
   if (cmd_line->HasSwitch(switches::kIgnoreCertificateErrors)) {
@@ -126,7 +137,7 @@ void ShellBrowserContext::InitWhileIOAllowed() {
 #endif
 
   if (!base::PathExists(path_))
-    file_util::CreateDirectory(path_);
+    base::CreateDirectory(path_);
 }
 
 FilePath ShellBrowserContext::GetPath() const {
@@ -153,17 +164,74 @@ net::URLRequestContextGetter* ShellBrowserContext::GetRequestContext()  {
 }
 
 net::URLRequestContextGetter* ShellBrowserContext::CreateRequestContext(
-    ProtocolHandlerMap* protocol_handlers) {
+    ProtocolHandlerMap* protocol_handlers,
+    URLRequestInterceptorScopedVector protocol_interceptors) {
+
   DCHECK(!url_request_getter_);
+  CommandLine* cmd_line = CommandLine::ForCurrentProcess();
+  std::string auth_server_whitelist =
+    cmd_line->GetSwitchValueASCII(switches::kAuthServerWhitelist);
+  std::string auth_delegate_whitelist =
+    cmd_line->GetSwitchValueASCII(switches::kAuthNegotiateDelegateWhitelist);
+  std::string gssapi_library_name =
+    cmd_line->GetSwitchValueASCII(switches::kGSSAPILibraryName);
+  std::string auth_schemes =
+    cmd_line->GetSwitchValueASCII(switches::kAuthSchemes);
+
+  if (auth_schemes.empty())
+    auth_schemes = "basic,digest,ntlm,negotiate";
+
   url_request_getter_ = new ShellURLRequestContextGetter(
       ignore_certificate_errors_,
       GetPath(),
       package_->path(),
       BrowserThread::UnsafeGetMessageLoopForThread(BrowserThread::IO),
       BrowserThread::UnsafeGetMessageLoopForThread(BrowserThread::FILE),
-      protocol_handlers);
+      protocol_handlers, this,
+      auth_schemes, auth_server_whitelist, auth_delegate_whitelist,
+      gssapi_library_name);
+
+  const base::ListValue *additional_trust_anchors = NULL;
+  if (package_->root()->GetList("additional_trust_anchors", &additional_trust_anchors)) {
+    net::CertificateList trust_anchors;
+    for (size_t i=0; i<additional_trust_anchors->GetSize(); i++) {
+      std::string certificate_string;
+      if (!additional_trust_anchors->GetString(i, &certificate_string)) {
+        LOG(WARNING)
+          << "Could not get string from entry " << i;
+        continue;
+      }
+
+      net::CertificateList loaded =
+          net::X509Certificate::CreateCertificateListFromBytes(
+              certificate_string.c_str(), certificate_string.size(),
+              net::X509Certificate::FORMAT_AUTO);
+      if (loaded.empty() && !certificate_string.empty()) {
+        LOG(WARNING)
+          << "Could not load certificate from entry " << i;
+        continue;
+      }
+
+      trust_anchors.insert(trust_anchors.end(), loaded.begin(), loaded.end());
+    }
+    if (!trust_anchors.empty()) {
+      LOG(INFO)
+        << "Added " << trust_anchors.size() << " certificates to trust anchors.";
+      url_request_getter_->SetAdditionalTrustAnchors(trust_anchors);
+    }
+  }
+
   resource_context_->set_url_request_context_getter(url_request_getter_.get());
   return url_request_getter_.get();
+}
+
+net::URLRequestContextGetter*
+    ShellBrowserContext::CreateRequestContextForStoragePartition(
+        const base::FilePath& partition_path,
+        bool in_memory,
+        ProtocolHandlerMap* protocol_handlers,
+        URLRequestInterceptorScopedVector request_interceptors) {
+  return NULL;
 }
 
 net::URLRequestContextGetter*
@@ -190,34 +258,24 @@ net::URLRequestContextGetter*
   return GetRequestContext();
 }
 
-net::URLRequestContextGetter*
-    ShellBrowserContext::CreateRequestContextForStoragePartition(
-        const base::FilePath& partition_path,
-        bool in_memory,
-        ProtocolHandlerMap* protocol_handlers) {
-  return NULL;
-}
-
 ResourceContext* ShellBrowserContext::GetResourceContext()  {
   return resource_context_.get();
-}
-
-GeolocationPermissionContext*
-    ShellBrowserContext::GetGeolocationPermissionContext()  {
-  return NULL;
 }
 
 quota::SpecialStoragePolicy* ShellBrowserContext::GetSpecialStoragePolicy() {
   return NULL;
 }
 
-void ShellBrowserContext::RequestMIDISysExPermission(
-      int render_process_id,
-      int render_view_id,
-      const GURL& requesting_frame,
-      const MIDISysExPermissionCallback& callback) {
-  callback.Run(true);
+BrowserPluginGuestManager* ShellBrowserContext::GetGuestManager() {
+  return NULL;
 }
 
+PushMessagingService* ShellBrowserContext::GetPushMessagingService() {
+  return NULL;
+}
+
+SSLHostStateDelegate* ShellBrowserContext::GetSSLHostStateDelegate() {
+  return NULL;
+}
 
 }  // namespace content

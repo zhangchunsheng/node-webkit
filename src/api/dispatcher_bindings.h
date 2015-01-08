@@ -25,7 +25,7 @@
 #include "base/compiler_specific.h"
 #include "v8/include/v8.h"
 
-namespace api {
+namespace nwapi {
 
 class DispatcherBindings : public v8::Extension {
  public:
@@ -34,7 +34,9 @@ class DispatcherBindings : public v8::Extension {
 
   // v8::Extension implementation.
   virtual v8::Handle<v8::FunctionTemplate>
-      GetNativeFunction(v8::Handle<v8::String> name) OVERRIDE;
+      GetNativeFunctionTemplate(
+                        v8::Isolate* isolate,
+                        v8::Handle<v8::String> name) OVERRIDE;
 
  private:
   // Helper functions for bindings.
@@ -53,6 +55,7 @@ class DispatcherBindings : public v8::Extension {
   static void CreateShell(const v8::FunctionCallbackInfo<v8::Value>& args);
 
   // Remote objects.
+  static void AllocateId(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void AllocateObject(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void DeallocateObject(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void CallObjectMethod(const v8::FunctionCallbackInfo<v8::Value>& args);
@@ -61,10 +64,15 @@ class DispatcherBindings : public v8::Extension {
   static void CallStaticMethodSync(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void CrashRenderer(const v8::FunctionCallbackInfo<v8::Value>& args);
   static void SetCrashDumpDir(const v8::FunctionCallbackInfo<v8::Value>& args);
+#if defined(OS_MACOSX)
+  static void InitMsgIDMap();
+  static void GetNSStringWithFixup(const v8::FunctionCallbackInfo<v8::Value>& args);
+  static void GetNSStringFWithFixup(const v8::FunctionCallbackInfo<v8::Value>& args);
+#endif
 
   DISALLOW_COPY_AND_ASSIGN(DispatcherBindings);
 };
 
-}  // namespace api
+}  // namespace nwapi
 
 #endif  // CONTENT_NW_SRC_API_DISPATCHER_BINDINGS_H_
